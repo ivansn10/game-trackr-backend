@@ -1,0 +1,107 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://0.0.0.0:5000
+      ConnectionStrings__DefaultConnection: Host=db;Port=5432;Database=gametracker;Username=postgres;Password=pass
+      Weaviate__Url: http://weaviate:8080/v1/
+    networks:
+      - backend
+    depends_on:
+      - db
+      - weaviate
+    volumes:
+      - dataprotection_keys:/root/.aspnet/DataProtection-Keys
+
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: gametracker
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql-init:/docker-entrypoint-initdb.d
+    networks:
+      - backend
+
+  weaviate:
+    image: semitechnologies/weaviate:latest
+    environment:
+      ENABLE_MODULES: none
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
+      CLUSTER_HOSTNAME: "node1"
+      DISABLE_TELEMETRY: "true"
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    networks:
+      - backend
+
+  ollama:
+    image: ollama/ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - backend
+
+  nginx:
+    image: nginx:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d/api.gametrackr.com.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/logs:/var/log/nginx
+      - certbot_webroot:/var/www/certbot
+      - certbot_letsencrypt:/etc/letsencrypt
+    depends_on:
+      - api
+      - weaviate
+    networks:
+      - backend
+
+  # certbot-issue:
+  #   image: certbot/certbot
+  #   profiles:
+  #     - manual
+  #   volumes:
+  #     - certbot_webroot:/var/www/certbot
+  #     - certbot_letsencrypt:/etc/letsencrypt
+  #   command: certonly --webroot --webroot-path=/var/www/certbot \
+  #           --email iserranopersonal@gmail.com \
+  #           --agree-tos --no-eff-email -d api.gametrackr.com
+  #   networks:
+  #     - backend
+
+  certbot-renew:
+    image: certbot/certbot
+    profiles:
+      - manual
+    depends_on:
+      - nginx
+    volumes:
+      - certbot_webroot:/var/www/certbot
+      - certbot_letsencrypt:/etc/letsencrypt
+      - certbot_logs:/var/log/letsencrypt
+      - certbot_lib:/var/lib/letsencrypt
+    command: renew --webroot --webroot-path=/var/www/certbot --non-interactive --agree-tos --force-renewal
+    networks:
+      - backend
+
+volumes:
+  pgdata:
+  weaviate_data:
+  ollama_data:
+  pgadmin_data:
+  certbot_webroot:
+  certbot_letsencrypt:
+  certbot_logs:
+  certbot_lib:
+  dataprotection_keys:
+
+networks:
+  backend:
