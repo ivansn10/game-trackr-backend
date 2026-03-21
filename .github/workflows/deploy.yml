@@ -19,7 +19,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: "."
           target: "~/app"
-          rm: true
+          rm: false
 
       - name: Finalize Docker Deployment
         uses: appleboy/ssh-action@v1.0.3
