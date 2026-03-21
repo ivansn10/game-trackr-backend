@@ -3,11 +3,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: gametracker-api
+    restart: always
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      ASPNETCORE_URLS: http://0.0.0.0:5000
-      ConnectionStrings__DefaultConnection: Host=db;Port=5432;Database=gametracker;Username=postgres;Password=pass
-      Weaviate__Url: http://weaviate:8080/v1/
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://0.0.0.0:5000
+      - ConnectionStrings__PostgreSQL=Host=db;Port=5432;Database=gametracker;Username=postgres;Password=${DB_PASSWORD}
+      - Services__Weaviate__ApiUrl=http://weaviate:8080/v1/graphql
+      - Services__Ollama__Url=http://ollama:11434
     networks:
       - backend
     depends_on:
@@ -18,20 +21,24 @@ services:
 
   db:
     image: postgres:latest
+    container_name: gametracker-db
+    restart: always
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: pass
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: gametracker
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
       - ./sql-init:/docker-entrypoint-initdb.d
     networks:
       - backend
 
   weaviate:
     image: semitechnologies/weaviate:latest
+    container_name: gametracker-weaviate
+    restart: always
     environment:
-      ENABLE_MODULES: none
+      ENABLE_MODULES: 'none'
       AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
       PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
       CLUSTER_HOSTNAME: "node1"
@@ -42,53 +49,23 @@ services:
       - backend
 
   ollama:
-    image: ollama/ollama
-    volumes:
-      - ollama_data:/root/.ollama
+    image: ollama/ollama:latest
+    container_name: gametracker-ollama
     networks:
       - backend
 
   nginx:
     image: nginx:latest
+    container_name: nginx-proxy
+    restart: always
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/conf.d/api.gametrackr.com.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./nginx/logs:/var/log/nginx
-      - certbot_webroot:/var/www/certbot
-      - certbot_letsencrypt:/etc/letsencrypt
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
     depends_on:
       - api
-      - weaviate
-    networks:
-      - backend
-
-  # certbot-issue:
-  #   image: certbot/certbot
-  #   profiles:
-  #     - manual
-  #   volumes:
-  #     - certbot_webroot:/var/www/certbot
-  #     - certbot_letsencrypt:/etc/letsencrypt
-  #   command: certonly --webroot --webroot-path=/var/www/certbot \
-  #           --email iserranopersonal@gmail.com \
-  #           --agree-tos --no-eff-email -d api.gametrackr.com
-  #   networks:
-  #     - backend
-
-  certbot-renew:
-    image: certbot/certbot
-    profiles:
-      - manual
-    depends_on:
-      - nginx
-    volumes:
-      - certbot_webroot:/var/www/certbot
-      - certbot_letsencrypt:/etc/letsencrypt
-      - certbot_logs:/var/log/letsencrypt
-      - certbot_lib:/var/lib/letsencrypt
-    command: renew --webroot --webroot-path=/var/www/certbot --non-interactive --agree-tos --force-renewal
     networks:
       - backend
 
@@ -96,12 +73,8 @@ volumes:
   pgdata:
   weaviate_data:
   ollama_data:
-  pgadmin_data:
-  certbot_webroot:
-  certbot_letsencrypt:
-  certbot_logs:
-  certbot_lib:
   dataprotection_keys:
 
 networks:
   backend:
+    driver: bridge

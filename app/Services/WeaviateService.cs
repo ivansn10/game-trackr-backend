@@ -850,50 +850,64 @@ private class UserPreferenceAnalysis
     ///     Comprueba el estado de salud del servicio Weaviate
     /// </summary>
     public async Task<object> CheckHealth()
+{
+    try
     {
-        try
+        _logger.LogDebug("Verificando estado de salud de Weaviate");
+
+        // 1. Limpiar y preparar la URL de meta
+        var metaUrl = _apiUrl.Replace("/graphql", "").TrimEnd('/');
+        if (!metaUrl.EndsWith("/meta"))
+            metaUrl = $"{metaUrl}/meta";
+
+        var response = await _httpClient.GetAsync(metaUrl);
+
+        if (!response.IsSuccessStatusCode)
         {
-            _logger.LogDebug("Verificando estado de salud de Weaviate");
+            _logger.LogWarning("Servicio Weaviate no disponible. Código: {StatusCode}", response.StatusCode);
+            return new { Status = "Degraded", Error = $"Weaviate respondió {response.StatusCode}" };
+        }
 
-            // Consultar estado de Weaviate
-            var metaUrl = _apiUrl.Replace("/graphql", "");
-            if (!metaUrl.EndsWith("/meta"))
-                metaUrl = $"{metaUrl}/meta";
+        var jsonString = await response.Content.ReadAsStringAsync();
+        using var result = JsonDocument.Parse(jsonString);
+        var root = result.RootElement;
 
-            var response = await _httpClient.GetAsync(metaUrl);
+        // 2. Extraer versión de forma segura
+        string version = "Unknown";
+        if (root.TryGetProperty("version", out var v))
+            version = v.GetString() ?? "Unknown";
 
-            if (!response.IsSuccessStatusCode)
+        // 3. Extraer conteo de esquemas/clases de forma segura
+        // Nota: En versiones nuevas esto puede haber cambiado, así que validamos niveles
+        int schemaCount = 0;
+        if (root.TryGetProperty("hostname", out _) || root.TryGetProperty("modules", out _))
+        {
+            // Intentamos navegar por el JSON sin que lance excepción
+            if (root.TryGetProperty("meta", out var meta) && meta.TryGetProperty("classes", out var classes))
             {
-                _logger.LogWarning("Servicio Weaviate no disponible. Código: {StatusCode}", response.StatusCode);
-                throw new HttpRequestException($"Error consultando estado de Weaviate: {response.StatusCode}");
+                schemaCount = classes.ValueKind == JsonValueKind.Array ? classes.GetArrayLength() : 0;
             }
-
-            var jsonString = await response.Content.ReadAsStringAsync();
-            var result = JsonDocument.Parse(jsonString);
-
-            var status = new
-            {
-                Status = "Healthy",
-                Version = result.RootElement.GetProperty("version").GetString(),
-                SchemaCount = result.RootElement.GetProperty("meta").GetProperty("classes").GetArrayLength()
-            };
-
-            _logger.LogInformation("Servicio Weaviate disponible. Versión: {Version}, Esquemas: {SchemaCount}",
-                status.Version, status.SchemaCount);
-
-            return status;
         }
-        catch (Exception ex)
+
+        _logger.LogInformation("Servicio Weaviate disponible. Versión: {Version}, Esquemas: {SchemaCount}", version, schemaCount);
+
+        return new
         {
-            _logger.LogError(ex, "Error comprobando estado de Weaviate: {Message}", ex.Message);
-
-            return new
-            {
-                Status = "Unhealthy",
-                Error = ex.Message
-            };
-        }
+            Status = "Healthy",
+            Version = version,
+            SchemaCount = schemaCount
+        };
     }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Error comprobando estado de Weaviate: {Message}", ex.Message);
+        return new
+        {
+            Status = "Unhealthy",
+            Error = ex.Message
+        };
+    }
+}
 
 
     /// <summary>
