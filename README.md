@@ -1,7 +1,5 @@
 # Game Trackr Backend 🎮⚙️
 
-### **Final Degree Project | Computer Engineering**
-
 This repository contains the backend infrastructure for **Game Trackr**, a video game management and discovery platform. Developed as my **Final Degree Project**, this backend focuses on building a scalable, containerized architecture that integrates relational data, semantic search, and local AI processing.
 
 ---
