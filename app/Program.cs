@@ -78,7 +78,11 @@ builder.Services.AddCors(options =>
 
     options.AddPolicy("AllowProduction", policy =>
     {
-        policy.WithOrigins("https://gametrackr.com", "https://www.gametrackr.com")
+        policy.WithOrigins(
+                "https://iserrano.dev",
+                "https://www.iserrano.dev",
+                "https://api-gametrackr.iserrano.dev"
+            )
             .AllowAnyMethod()
             .AllowAnyHeader()
             .AllowCredentials();
